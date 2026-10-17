@@ -39,8 +39,10 @@ export function applyControlGroup(graph, controller, group, enabled) {
     const visit = (owner, active, blocked, blockedMode) => {
         const assign = (ids, opposite) => {
             for (const id of ids) {
+                const previous = modes.get(id);
+                if (previous?.locked && previous.depth < depth) continue;
                 const mode = blocked ? blockedMode : (opposite ? !active : active) ? 0 : offMode(owner);
-                if (!modes.has(id) || depth > modes.get(id).depth || modes.get(id).depth === depth && mode === 0) modes.set(id, {mode, depth});
+                if (!modes.has(id) || depth > modes.get(id).depth || modes.get(id).depth === depth && mode === 0) modes.set(id, {mode, depth, locked: !active && !blocked});
             }
         };
         assign(owner.nodes, false);

@@ -1,6 +1,6 @@
 [project]
 name = "Vantage-NodesV2"
-version = "0.1.0"
+version = "0.1.1"
 description = "Interactive bounding-box editing for ComfyUI's classic node renderer."
 readme = "README.md"
 requires-python = ">=3.10"

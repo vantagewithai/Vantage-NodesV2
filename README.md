@@ -192,7 +192,7 @@ Drag thumbnails to reorder them. Remove a single thumbnail or use **Remove All**
 
 Sizing preserves aspect ratio and never enlarges an image. Images already within both target dimensions stay unchanged. In `shorter` mode, an image that exceeds just one dimension may stay unchanged rather than being enlarged to fill the other. The same sizing rule applies to the connected background; JPEG compression applies only to gallery images.
 
-Connecting `background` reserves one gallery slot immediately. Disconnecting it frees that slot. Lowering the limit or connecting a background removes excess gallery items from the end. At execution, a background batch consumes one slot per frame; the frontend can reserve only one slot before those frames are known. Backend execution enforces the total limit.
+Connecting `background` from an active source reserves one gallery slot immediately. A muted or bypassed source does not reserve a slot and its background is ignored during execution. Mode changes update the count automatically; disconnecting also frees the slot. Lowering the limit or connecting a background removes excess gallery items from the end. At execution, a background batch consumes one slot per frame; the frontend can reserve only one slot before those frames are known. Backend execution enforces the total limit.
 
 ### Outputs
 

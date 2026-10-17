@@ -3,6 +3,14 @@ import { api } from "../../../scripts/api.js";
 import { installImageDrop } from "./image_drop.js";
 import { installImageComboRefresh, createImagePicker } from "./image_combo.js";
 
+export function backgroundAvailable(node, linkInfo = null) {
+    const input = node.inputs?.find(input => input.name === "background");
+    const link = linkInfo || node.graph?.links[input?.link];
+    if (!link) return false;
+    const source = node.graph?.getNodeById(link.origin_id);
+    return !!source && source.mode !== 2 && source.mode !== 4;
+}
+
 app.registerExtension({
     name: "VantageMultiImageLoaderV2",
     async nodeCreated(node) {
@@ -151,13 +159,25 @@ app.registerExtension({
         }
 
         function hidePathsWidget() {
-            for (const w of [pathsWidget, imageWidget]) {
+            for (const w of [pathsWidget, imageWidget, node.widgets.find(widget => widget.name === "use_background")]) {
                 w.type = "hidden";
                 w.computeSize = () => [0, -4];
                 if (w.inputEl) w.inputEl.style.display = "none";
             }
         }
-        let backgroundIsConnected = node.inputs?.some(input => input.name === "background" && input.link != null) || false;
+        const backgroundWidget = node.widgets.find(widget => widget.name === "use_background");
+        let backgroundIsConnected = backgroundAvailable(node);
+        backgroundWidget.value = backgroundIsConnected;
+        backgroundWidget.serializeValue = () => backgroundAvailable(node);
+        function refreshBackground() {
+            const available = backgroundAvailable(node);
+            backgroundWidget.value = available;
+            if (available !== backgroundIsConnected) {
+                backgroundIsConnected = available;
+                enforceCapacity();
+                node.setDirtyCanvas(true, true);
+            }
+        }
         function syncImageOutputs() {
             const maximum = Math.max(1, Number(node.widgets.find(w => w.name === "max_images").value));
             const count = maximum + 2;
@@ -478,7 +498,8 @@ app.registerExtension({
                 this.setSize(savedSize);
                 setTimeout(() => {
                     if (this.syncLayoutToNode) this.syncLayoutToNode();
-                    backgroundIsConnected = node.inputs?.some(input => input.name === "background" && input.link != null) || false;
+                    backgroundIsConnected = backgroundAvailable(node);
+                    backgroundWidget.value = backgroundIsConnected;
                     syncImageOptions(); syncImageOutputs(); enforceCapacity(); refreshGallery();
                 }, 0);
                 return out;
@@ -534,13 +555,18 @@ app.registerExtension({
         const maxChanged = maxWidget.callback;
         maxWidget.callback = function () { maxChanged?.apply(this, arguments); syncImageOutputs(); enforceCapacity(); updateLayout(); };
         const connectionsChanged = node.onConnectionsChange;
-        node.onConnectionsChange = function (type, slot, connected) {
+        node.onConnectionsChange = function (type, slot, connected, linkInfo) {
             connectionsChanged?.apply(this, arguments);
             if (type === 1 && node.inputs?.[slot]?.name === "background") {
-                backgroundIsConnected = connected;
+                backgroundIsConnected = connected && backgroundAvailable(node, linkInfo);
+                backgroundWidget.value = backgroundIsConnected;
                 enforceCapacity();
+                queueMicrotask(refreshBackground);
             }
         };
+        const backgroundMonitor = setInterval(refreshBackground, 150);
+        const removed = node.onRemoved;
+        node.onRemoved = function () { clearInterval(backgroundMonitor); removed?.apply(this, arguments); };
         hidePathsWidget();
         syncImageOutputs();
         installNodeHooks();

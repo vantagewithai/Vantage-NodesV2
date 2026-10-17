@@ -42,10 +42,11 @@ class VantageMultiImageLoaderV2:
                 "height": ("INT", {"default": 1024, "min": 1, "max": 2147483647}),
                 "fit_edge": (["longer", "shorter"], {"tooltip": "Longer fits inside width × height. Shorter covers width × height and may exceed one dimension. Neither mode enlarges images."}),
                 "img_compression": ("INT", {"default": 18, "min": 0, "max": 100, "step": 1}),
+                "use_background": ("BOOLEAN", {"default": True}),
                 "max_images": ("INT", {"default": 10, "min": 1, "max": 2147483647}),
                 "image": (["(none)"] + images,),
             },
-            "optional": {"background": ("IMAGE",)},
+            "optional": {"background": ("IMAGE", {"lazy": True})},
         }
 
     RETURN_TYPES = ImageOutputTypes(("IMAGE", "MASK") + ("IMAGE",) * 10)
@@ -106,10 +107,13 @@ class VantageMultiImageLoaderV2:
             return torch.cat((rgb, alpha), dim=-1)
         raise ValueError(f"Unsupported channel count: {image_tensor.shape[-1]}")
     
-    def load_images(self, image_paths, width=1024, height=1024, fit_edge="longer", img_compression=18, max_images=10, image="(none)", background=None):
+    def check_lazy_status(self, use_background=True, background=None, **kwargs):
+        return ["background"] if use_background and background is None else []
+
+    def load_images(self, image_paths, width=1024, height=1024, fit_edge="longer", img_compression=18, max_images=10, image="(none)", background=None, use_background=True):
         images = []
         limit = max(1, int(max_images))
-        if background is not None:
+        if use_background and background is not None:
             images.extend(self._fit_dimensions(frame, width, height, fit_edge) for frame in background[:limit].split(1))
         seen = set()
         for path in image_paths.splitlines():
