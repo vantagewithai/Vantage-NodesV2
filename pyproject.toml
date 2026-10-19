@@ -1,7 +1,7 @@
 [project]
 name = "Vantage-NodesV2"
-version = "0.1.1"
-description = "Interactive bounding-box editing for ComfyUI's classic node renderer."
+version = "0.1.2"
+description = "Custom nodes for ComfyUI: interactive bounding boxes, a multi-image gallery, hierarchical workflow controls, switches, and loops."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }

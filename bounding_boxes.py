@@ -189,8 +189,8 @@ class VantageBoundingBoxes:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "BOUNDING_BOX", "ARRAY", "IMAGE", "INT", "INT")
-    RETURN_NAMES = ("preview", "bboxes", "elements", "image", "width", "height")
+    RETURN_TYPES = ("IMAGE", "BOUNDING_BOX", "ARRAY", "IMAGE", "INT", "INT", "STRING")
+    RETURN_NAMES = ("preview", "bboxes", "elements", "image", "width", "height", "characters")
     FUNCTION = "execute"
     CATEGORY = "Vantage/Image"
     OUTPUT_NODE = True
@@ -214,6 +214,12 @@ class VantageBoundingBoxes:
         remap = not upstream_changed and state.get("background_image") == background_image and state.get("transform") is not None and state["transform"] != transform
         if remap:
             source = _transform_boxes(source, state["transform"], transform)
+        characters = ",".join(
+            str(index) for index, box in enumerate((box for box in source if isinstance(box, dict)), 1)
+            if isinstance(box.get("metadata"), dict)
+            and box["metadata"].get("type", "obj") != "text"
+            and box["metadata"].get("is_character", False)
+        )
         regions = boxes_to_regions(source, width, height)
         next_state = {"background_image": background_image, "transform": transform}
         ui = {"dims": [width, height], "background_state": [json.dumps(next_state)]}
@@ -230,6 +236,7 @@ class VantageBoundingBoxes:
                 image,
                 width,
                 height,
+                characters,
             ),
         }
 

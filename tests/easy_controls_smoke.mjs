@@ -215,3 +215,21 @@ for (const childMode of ["max one","always one"]) {
  assert.equal(reloaded.properties.groups[0].children[0].enabled,childMode==="always one");
 }
 console.log("Actual widget callbacks enforce Max one and Always one and remove obsolete widgets through the native API");
+
+const oppositeRoot = {nodes:[], oppositeNodes:[1], enabled:true, children:[]};
+const followRoot = {nodes:[1], enabled:true, offMode:"mute", children:[]};
+controller.properties = {groups:[oppositeRoot, followRoot]};
+for (const followEnabled of [true, false]) {
+    followRoot.enabled = followEnabled;
+    for (const oppositeEnabled of [true, false]) {
+        apply(graph, controller, oppositeRoot, oppositeEnabled);
+        assert.equal(a.mode, oppositeEnabled ? 4 : followEnabled ? 0 : 2);
+        apply(graph, controller, followRoot, followEnabled);
+        assert.equal(a.mode, followEnabled ? 0 : 2);
+    }
+}
+followRoot.enabled = true;
+followRoot.children = [{nodes:[1], enabled:false}];
+apply(graph, controller, oppositeRoot, false);
+assert.equal(a.mode,4);
+console.log("Disabled main Opposite groups defer to main Follow assignments; enabled Opposite groups enforce their assignment, retaining subgroup overrides");

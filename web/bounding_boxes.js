@@ -185,6 +185,17 @@ app.registerExtension({
                 }));
                 typeButtons[type].style.flex = "1";
             }
+            const characterLabel = element("label", inspector, "bar");
+            characterLabel.style.flexDirection = "row";
+            const characterToggle = element("input", characterLabel);
+            characterToggle.type = "checkbox";
+            characterToggle.style.width = "auto";
+            characterToggle.setAttribute("aria-label", "Character");
+            element("span", characterLabel, null, "Character");
+            characterToggle.onchange = () => edit(list => {
+                list[selected].metadata ||= {};
+                list[selected].metadata.is_character = characterToggle.checked;
+            });
             for (const [name, title] of [["text", "Text content"], ["desc", "Description"]]) {
                 const label = element("label", inspector, null, title);
                 const input = element("textarea", label);
@@ -316,6 +327,8 @@ app.registerExtension({
                 for (const [name, input] of Object.entries(fields)) {
                     if (document.activeElement !== input) input.value = ["x", "y", "width", "height"].includes(name) ? box?.[name] ?? 0 : name === "palette" ? (meta.palette || []).join(", ") : meta[name] || "";
                 }
+                characterLabel.hidden = meta.type === "text";
+                characterToggle.checked = !!meta.is_character;
                 fields.text.disabled = meta.type !== "text";
                 fields.text.parentElement.style.opacity = meta.type === "text" ? "1" : ".45";
                 regionSelect.replaceChildren(new Option("Select a region…", "-1"));

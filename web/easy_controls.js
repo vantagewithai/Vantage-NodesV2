@@ -36,23 +36,33 @@ export function applyControlGroup(graph, controller, group, enabled) {
     group.enabled = enabled;
     const modes = new Map();
     const offMode = owner => owner.offMode === "mute" || owner.offMode === "never" ? 2 : 4;
-    const visit = (owner, active, blocked, blockedMode) => {
+    const visit = (owner, active, blocked, blockedMode, assignments = modes) => {
         const assign = (ids, opposite) => {
             for (const id of ids) {
-                const previous = modes.get(id);
+                const previous = assignments.get(id);
                 if (previous?.locked && previous.depth < depth) continue;
                 const mode = blocked ? blockedMode : (opposite ? !active : active) ? 0 : offMode(owner);
-                if (!modes.has(id) || depth > modes.get(id).depth || modes.get(id).depth === depth && mode === 0) modes.set(id, {mode, depth, locked: !active && !blocked});
+                if (!assignments.has(id) || depth > assignments.get(id).depth || assignments.get(id).depth === depth && mode === 0) assignments.set(id, {mode, depth, locked: !active && !blocked});
             }
         };
         assign(owner.nodes, false);
         assign(owner.oppositeNodes || [], true);
         depth++;
-        for (const child of owner.children || []) visit(child, active && child.enabled !== false, blocked || !active, blocked ? blockedMode : offMode(owner));
+        for (const child of owner.children || []) visit(child, active && child.enabled !== false, blocked || !active, blocked ? blockedMode : offMode(owner), assignments);
         depth--;
     };
     let depth = 0;
     visit(group, enabled, false, offMode(group));
+    for (const other of controller.properties?.groups || []) {
+        if (enabled || other === group) continue;
+        const shared = (group.oppositeNodes || []).filter(id => (other.nodes || []).includes(id));
+        if (!shared.length) continue;
+        const following = new Map();
+        visit(other, other.enabled !== false, false, offMode(other), following);
+        for (const id of shared) {
+            if (modes.get(id)?.depth === 0) modes.set(id, following.get(id));
+        }
+    }
     for (const [id, {mode}] of modes) {
         const target = graph?.getNodeById(id);
         if (!target) continue;

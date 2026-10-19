@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as directory, patch.object(bbox.folder_paths,
                     background_image="image.png", resize_options=json.dumps(dict(keep_proportion="pad", pad_color="#123456")))
     result = node.execute(**controls, editor_state='[{"x":8,"y":16,"width":24,"height":32}]')
     assert result["ui"]["dims"] == [64, 64]
-    assert result["result"][4:] == (64, 64)
+    assert result["result"][4:6] == (64, 64)
     output = result["result"][3]
     assert output.shape == (1, 64, 64, 3)
     np.testing.assert_allclose(output[0, 0, 0].numpy(), np.array([18, 52, 86]) / 255, atol=1e-7)
@@ -46,7 +46,7 @@ with tempfile.TemporaryDirectory() as directory, patch.object(bbox.folder_paths,
     np.testing.assert_allclose(np.asarray(Image.open(io.BytesIO(png))), (output[0].numpy()*255).clip(0,255).astype(np.uint8))
     original = node.execute(background_image="image.png", resize_options=settings)
     assert original["ui"]["dims"] == [81, 53]
-    assert original["result"][4:] == (81, 53)
+    assert original["result"][4:6] == (81, 53)
     assert original["result"][3].shape == (1, 53, 81, 3)
     assert node.execute()["result"][3].shape == (1, 1024, 1024, 3)
     default_resize = node.execute(resize=True, megapixels=0.00390625, background_image="image.png")
@@ -78,3 +78,13 @@ with tempfile.TemporaryDirectory() as directory, patch.object(bbox.folder_paths,
         else:
             raise AssertionError("Input-folder containment failed")
 print("Resize modes, resolution selector, original dimensions, box transforms, image output and path containment passed")
+
+character_boxes = [
+    {"x":0, "y":0, "width":32, "height":32, "metadata":meta}
+    for meta in [{}, {"is_character":True}, {"type":"text", "is_character":True},
+                 {"type":"obj", "is_character":True}, {"is_character":False}, {"is_character":True}]
+]
+assert node.execute(editor_state=json.dumps(character_boxes))["result"][6] == "2,4,6"
+assert node.execute()["result"][6] == ""
+assert node.RETURN_NAMES[-1] == "characters" and node.RETURN_TYPES[-1] == "STRING"
+print("Character output uses one-based box numbers, excludes text and defaults to empty")
