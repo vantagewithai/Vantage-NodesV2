@@ -1,6 +1,6 @@
 # Vantage-NodesV2
 
-Custom nodes for ComfyUI: interactive bounding boxes, a multi-image gallery, hierarchical workflow controls, switches, and loops.
+Custom nodes for ComfyUI: interactive bounding boxes, an image compositor, a multi-image gallery, hierarchical workflow controls, execution checkpoints, switches, and loops.
 
 This is a separate nodeset from **Vantage-Nodes**. It does not require Vantage-Nodes to be installed.
 
@@ -84,6 +84,8 @@ Restart ComfyUI after Python changes and refresh the browser after frontend chan
 | Display name | Internal class / workflow ID | Category |
 | --- | --- | --- |
 | Vantage-Bounding-Boxes | `Vantage-Bounding-Boxes` | `Vantage/Image` |
+| Vantage Image Compositor | `VantageImageCompositor` | `Vantage/Image` |
+| Execution Pause (VantageV2) | `VantageExecutionPauseV2` | `Vantage/Utils` |
 | Vantage Multiple Image Loader V2 | `VantageMultiImageLoaderV2` | `Vantage/Image` |
 | Vantage-Easy-Controls | `Vantage-Easy-Controls` | `Vantage/Controls` |
 | Any Switch (VantageV2) | `VantageanySwitchV2` | `Vantage/Utils` |
@@ -121,6 +123,7 @@ Choose `(none)` for a blank canvas. With resizing disabled, a blank canvas is 10
 - Drag inside a selected box to move it; drag a corner or edge handle to resize it.
 - Enter exact `x`, `y`, `width`, and `height` values in the inspector.
 - Choose **Object** or **Text**, enter text content where applicable, and add a description.
+- Object boxes also have a **Character** checkbox, Off by default. Text boxes do not show it.
 - Set palette colors using color pickers or comma-separated hex values. Up to five output palette colors are supported.
 - Duplicate or delete a selected box. Use the order arrows to place background regions before foreground regions.
 - Toggle Grid for an editing guide. Undo/redo includes region edits and resize settings.
@@ -169,6 +172,7 @@ Optional **bboxes** accepts bounding boxes, elements, or a JSON string. Run once
 | `image` | IMAGE | Applied background without annotations or dimming; black canvas when no image is loaded |
 | `width` | INT | Applied image width |
 | `height` | INT | Applied image height |
+| `characters` | STRING | Comma-separated one-based box numbers marked Character, such as `2,4,6`; empty when none are marked. Text boxes are excluded. |
 
 Connect `width`, `height`, and optionally `image` to the multi-image loader for consistent sizing and a background image.
 
@@ -232,9 +236,9 @@ Selecting a ComfyUI subgraph node also controls the nodes inside it, including n
 
 ### Nested groups and exclusive selections
 
-Parent Off gates its descendants using the parent's off mode, including both assignment columns. Child toggle preferences are retained. Turning the parent back On restores those preferences instead of enabling every child.
+Parent Off gates nodes assigned only in descendants using the parent's off mode, including both assignment columns. Nodes directly assigned in the parent retain that parent's Follow/Opposite behavior even if a descendant also assigns them. Child toggle preferences are retained. Turning the parent back On restores those preferences instead of enabling every child.
 
-When an enabled ancestor and a deeper subgroup both assign the same node, the deeper assignment wins. Shared nodes at the same depth favor an active assignment. Independent root groups can overlap; the most recently applied root group determines the shared node's mode.
+When an enabled ancestor and a deeper subgroup both assign the same node, the deeper assignment wins. Shared nodes at the same depth favor an active assignment. Independent root groups can overlap. When an Off root group has a node in Opposite and another root group has that node in Follow, the Off group defers to the Follow group, including its effective subgroup overrides. When the Opposite group is On, it enforces its assignment as usual. Other overlaps retain the most recently applied root group's mode.
 
 Each parent can choose a rule for its immediate subgroups:
 
@@ -408,6 +412,45 @@ Each loop carries one arbitrary ComfyUI value. It can be a list or dictionary wh
 
 Only the dependency path from Start into End is repeated. A disconnected preview or save node is not automatically executed per iteration; required side effects must be part of End's dependency path.
 
+## Execution Pause (VantageV2)
+
+Class: `VantageExecutionPauseV2`. Category: `Vantage/Utils`.
+
+| Socket | Type | Purpose |
+| --- | --- | --- |
+| `value` input | Any | Value whose downstream branch should pause |
+| `value` output | Same value | Input passed through unchanged on the continuation Run |
+
+Connect any value to its input and route downstream nodes through its output. The first Run evaluates the input and blocks that downstream branch. Make your changes and press Run again to pass the current input through unchanged. It then arms itself for the next pause. A status field indicates when it is waiting. Reloading the workflow resets it to pause.
+
+This uses ComfyUI execution blocking, like the compositor: independent branches may finish, and Run submits the updated workflow rather than resuming an old execution snapshot. Upstream nodes may rerun if their inputs change. Use manual Run; automatic queueing or prequeued jobs are not a manual review checkpoint. No extra dependencies.
+
+## Vantage Image Compositor
+
+Class: `VantageImageCompositor`. Category: `Vantage/Image`. A single image-batch compositor inspired by Enrico's Compositor V4 pair. Enrico's nodes and Fabric.js are not required.
+
+- `images`: IMAGE batch; each image becomes an independently editable layer, with no eight-layer limit.
+- `masks`: optional MASK batch. A single mask applies to every image; otherwise masks match image indices. Missing masks leave the image's alpha unchanged. Masks are resized to image dimensions; 1 is visible and 0 is transparent. `invert_masks` reverses this convention. Existing RGBA alpha is multiplied by the mask.
+- `width` / `height`: output canvas dimensions. `padding` adds editor working space around the canvas without enlarging the output.
+- `normalize_height`: resize input layers to the canvas height while preserving aspect ratio, then fit their initial placement inside the canvas.
+- `auto_continue`: Off pauses the downstream branch when input images, masks, or canvas settings change. Arrange layers, then Run again. On renders immediately using the current layout.
+
+### Basic workflow
+
+1. Connect an IMAGE batch to `images` and optionally a MASK batch to `masks`.
+2. Set the output width, height, and other settings. Run once to populate the editor.
+3. With `auto_continue` Off, downstream execution pauses when the input configuration changes. Arrange the layers in the editor.
+4. Press Run again to render the current composition and continue downstream. Local layout edits apply on subsequent runs without a Save action.
+5. Connect `image` to a preview, Save Image, or another image-processing node. Connect `transforms` when you need the layout JSON.
+
+### Layer controls
+
+Drag layers to move them. Corner handles resize around the layer center while preserving aspect ratio; hold Shift to change width and height independently. The top handle rotates; hold Shift for 15-degree increments. Numeric fields set position, dimensions, angle, and opacity. The toolbar also provides flips, fit, nine-way alignment, stacking order, grid snapping, background color, reset, and undo/redo. Layer checkboxes control visibility. Draw and Erase edit a separate foreground drawing layer. Arrow keys nudge the selected image; Shift increases the step.
+
+The middle canvas viewport grows and shrinks in height when you resize the node, while the controls and layer list remain visible. The canvas stays centered and scales to fit with its aspect ratio preserved, independently of output resolution. Minimum node size is 680 × 780; the node can shrink back to this minimum after being enlarged, and workflow layout size is retained on reload. Layer positions, order, visibility, and drawings are saved in the workflow.
+
+Outputs are `image` (one RGB composite) and `transforms` (JSON layout with zero-based layer indices, center positions, dimensions, angles, flips, opacity, visibility, background, and strokes). There is no Save button or image-name output. Input previews are written only to ComfyUI's temporary directory; use a separate Save Image node to save the final composite. Reloading a workflow requests a fresh input review when auto-continue is Off.
+
 ## Troubleshooting
 
 | Issue | What to check |
@@ -428,6 +471,7 @@ Only the dependency path from Start into End is repeated. A disconnected preview
 From the ComfyUI directory, use the same Python environment used to launch ComfyUI:
 
 ```bash
+python custom_nodes/Vantage-NodesV2/tests/execution_pause_smoke.py
 python custom_nodes/Vantage-NodesV2/tests/image_compositor_smoke.py
 python custom_nodes/Vantage-NodesV2/tests/bounding_boxes_smoke.py
 python custom_nodes/Vantage-NodesV2/tests/multi_image_loader_smoke.py
@@ -439,6 +483,7 @@ python custom_nodes/Vantage-NodesV2/tests/value_switch_smoke.py
 Frontend logic checks require Node.js for development only; it is not a runtime dependency:
 
 ```bash
+node custom_nodes/Vantage-NodesV2/tests/execution_pause_smoke.mjs
 node custom_nodes/Vantage-NodesV2/tests/image_compositor_smoke.mjs
 node custom_nodes/Vantage-NodesV2/tests/easy_controls_smoke.mjs
 node custom_nodes/Vantage-NodesV2/tests/image_combo_smoke.mjs
@@ -446,30 +491,8 @@ node custom_nodes/Vantage-NodesV2/tests/image_drop_smoke.mjs
 node custom_nodes/Vantage-NodesV2/tests/value_switch_restore_smoke.mjs
 ```
 
-These checks cover backend behavior, graph execution, and selected frontend logic. The live nodes have also been tested in both classic mode and Nodes 2.0.
+These checks cover backend behavior, graph execution, and selected frontend logic. The original nodes were user-tested in classic mode and Nodes 2.0. The new compositor has backend tests and isolated browser checks; full live ComfyUI testing in both modes remains separate.
 
 ## License
 
 [MIT](LICENSE).
-
-### Execution Pause (VantageV2)
-
-Class: `VantageExecutionPauseV2`. Connect any value to its input and route downstream nodes through its output. The first Run evaluates the input and blocks that downstream branch. Make your changes and press Run again to pass the current input through unchanged. It then arms itself for the next pause. A status field indicates when it is waiting. Reloading the workflow resets it to pause.
-
-This uses ComfyUI execution blocking, like the compositor: independent branches may finish, and Run submits the updated workflow rather than resuming an old execution snapshot. Upstream nodes may rerun if their inputs change. Use manual Run; automatic queueing or prequeued jobs are not a manual review checkpoint. No extra dependencies.
-
-### Vantage Image Compositor
-
-Class: `VantageImageCompositor`. A single image-batch compositor inspired by Enrico's Compositor V4 pair. Enrico's nodes and Fabric.js are not required.
-
-- `images`: IMAGE batch; each image becomes an independently editable layer, with no eight-layer limit.
-- `masks`: optional MASK batch. A single mask applies to every image; otherwise masks match image indices. Missing masks leave the image's alpha unchanged. Masks are resized to image dimensions; 1 is visible and 0 is transparent. `invert_masks` reverses this convention. Existing RGBA alpha is multiplied by the mask.
-- `width` / `height`: output canvas dimensions. `padding` adds editor working space around the canvas without enlarging the output.
-- `normalize_height`: resize input layers to the canvas height while preserving aspect ratio, then fit their initial placement inside the canvas.
-- `auto_continue`: Off pauses the downstream branch when input images, masks, or canvas settings change. Arrange layers, then Run again. On renders immediately using the current layout.
-
-Drag layers to move them. Corner handles resize around the layer center while preserving aspect ratio; hold Shift to change width and height independently. The top handle rotates; hold Shift for 15-degree increments. Numeric fields set position, dimensions, angle, and opacity. The toolbar also provides flips, fit, nine-way alignment, stacking order, grid snapping, background color, reset, and undo/redo. Layer checkboxes control visibility. Draw and Erase edit a separate foreground drawing layer. Arrow keys nudge the selected image; Shift increases the step.
-
-The editor scales and centers its canvas inside the current node size, independent of output resolution. Minimum node size is 680 × 780; workflow layout size is retained on reload. Layer positions, order, visibility, and drawings are saved in the workflow.
-
-Outputs are `image` (one RGB composite) and `transforms` (JSON layout with zero-based layer indices, center positions, dimensions, angles, flips, opacity, visibility, background, and strokes). There is no Save button or image-name output. Input previews are written only to ComfyUI's temporary directory; use a separate Save Image node to save the final composite. Reloading a workflow requests a fresh input review when auto-continue is Off.
