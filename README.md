@@ -141,6 +141,10 @@ Choose `(none)` for a blank canvas. With resizing disabled, a blank canvas is 10
 
 Shortcuts apply while the editor is focused; text fields retain normal editing behavior.
 
+### Copy and paste box data
+
+Use **Copy** to copy all boxes, including positions, text, descriptions, palettes, and Character flags. **Paste** opens a JSON dialog; **Replace boxes** applies the data, and Undo restores the previous boxes. Coordinates stay unchanged; background images and resize settings are not copied. Clipboard access has a manual JSON fallback. Use Ctrl/Cmd+C and Ctrl/Cmd+V while the editor is focused; text fields retain normal clipboard behavior.
+
 ### Resize the background
 
 Enable **Resize** to activate **Aspect ratio**, **Megapixels**, and **Multiple**. These use ComfyUI's ResolutionSelector calculation, where 1 MP represents 1024 × 1024 pixels. Changes update the grid without running the workflow.
@@ -158,7 +162,7 @@ Padding is the default and produces the selected target dimensions. `resize` fit
 
 Apply processes the image and transforms existing boxes with it. Cancel discards popup edits. Disabling Resize restores the original image dimensions. The read-only dimensions below the grid always describe the applied image.
 
-The canvas fits centered without changing its viewport height. The node preserves its saved size, with a minimum of 520 × 1060.
+The canvas fits centered without changing its viewport height. The node preserves its saved size, with a minimum of 520 × 1100.
 
 ### Inputs and outputs
 

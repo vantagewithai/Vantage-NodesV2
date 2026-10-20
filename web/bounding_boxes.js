@@ -19,7 +19,7 @@ style.textContent = `
 .vantage-bbox canvas { display:block;width:100%;height:100%;object-fit:contain;object-position:center center;touch-action:none;cursor:crosshair }
 .vantage-bbox .status { flex-shrink:0;overflow:hidden;white-space:nowrap;display:flex;justify-content:space-between;gap:8px;color:#b5bbc4;font-size:11px;font-variant-numeric:tabular-nums }
 .vantage-bbox .status span:last-child { overflow:hidden;text-overflow:ellipsis }
-.vantage-bbox .details { flex-shrink:0;height:390px }
+.vantage-bbox .details { flex-shrink:0;height:430px }
 .vantage-bbox .hint { height:100%;display:flex;align-items:center;justify-content:center;white-space:pre-line;margin:0;padding:12px;text-align:center;color:#a4aab4;border:1px dashed #ffffff25;border-radius:7px;line-height:1.6 }
 .vantage-bbox .inspector { height:100%;display:flex;flex-direction:column;gap:8px;padding:9px;border:1px solid #ffffff25;border-radius:8px }
 .vantage-bbox .geometry { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px }
@@ -43,6 +43,18 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+export function parseBoxData(text) {
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data?.boxes;
+    if (!Array.isArray(list) || !list.every(box => box && typeof box === "object"
+        && ["x", "y", "width", "height"].every(name => Number.isFinite(box[name]))
+        && box.width >= 0 && box.height >= 0
+        && (box.metadata === undefined || box.metadata !== null && typeof box.metadata === "object" && !Array.isArray(box.metadata)))) {
+        throw new Error("Paste bounding-box JSON with x, y, width and height values.");
+    }
+    return list;
+}
+
 app.registerExtension({
     name: "vantage.bounding_boxes",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -51,7 +63,7 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             created?.apply(this, arguments);
             const node = this;
-            const minimumWidth = 520, minimumHeight = 1060, headerHeight = 170;
+            const minimumWidth = 520, minimumHeight = 1100, headerHeight = 170;
             const widget = name => node.widgets.find(w => w.name === name);
             for (const name of ["editor_state", "last_incoming", "resize_options", "background_state", "background_image", "resize", "aspect_ratio", "megapixels", "multiple"]) {
                 const w = widget(name);
@@ -140,6 +152,8 @@ app.registerExtension({
             const selectButton = button(toolbar, "Select", "Select / move (V)", () => { mode = "select"; refresh(); });
             const drawButton = button(toolbar, "+ Box", "Draw a box (B), or Shift-drag anywhere", () => { mode = "draw"; selected = -1; refresh(); });
             const gridButton = button(toolbar, "Grid", "Toggle grid overlay", () => { grid = !grid; refresh(); });
+            button(toolbar, "Copy", "Copy all box data (Ctrl/Cmd+C)", () => copyBoxData());
+            button(toolbar, "Paste", "Paste box data (Ctrl/Cmd+V)", () => openBoxData());
             element("span", toolbar, "spacer");
             const undoButton = button(toolbar, "↶", "Undo (Ctrl/Cmd+Z)", () => history(undo, redo));
             const redoButton = button(toolbar, "↷", "Redo (Ctrl/Cmd+Shift+Z)", () => history(redo, undo));
@@ -151,6 +165,54 @@ app.registerExtension({
             const status = element("div", root, "status");
             const sizeLabel = element("span", status);
             const positionLabel = element("span", status, null, "Drag empty space to draw");
+            const dataDialog = element("dialog", root, "resize-dialog");
+            dataDialog.style.width = "520px";
+            const dataTitle = element("h3", dataDialog);
+            const dataText = element("textarea", dataDialog);
+            dataText.style.cssText = "width:100%;height:220px;resize:vertical";
+            dataText.setAttribute("aria-label", "Bounding box JSON");
+            element("p", dataDialog, null, "Transfers all boxes and metadata. Pixel coordinates are unchanged; background and resize settings are not copied.");
+            const dataError = element("p", dataDialog);
+            dataError.style.color = "#ffa5a5";
+            const dataActions = element("div", dataDialog, "bar");
+            button(dataActions, "Close", "Close without changing boxes", () => dataDialog.close());
+            const importButton = button(dataActions, "Replace boxes", "Replace current boxes; Undo restores them", () => {
+                try {
+                    const incoming = parseBoxData(dataText.value);
+                    edit(list => { list.splice(0, list.length, ...incoming); selected = -1; drag = null; });
+                    dataDialog.close();
+                    root.focus();
+                } catch (error) { dataError.textContent = error.message; }
+            });
+            dataDialog.addEventListener("keydown", event => event.stopPropagation());
+            dataDialog.addEventListener("pointerdown", event => event.stopPropagation());
+            async function copyBoxData() {
+                const text = JSON.stringify({width: dimensions()[0], height: dimensions()[1], boxes: boxes()}, null, 2);
+                try {
+                    await navigator.clipboard.writeText(text);
+                    positionLabel.textContent = "Box data copied";
+                } catch {
+                    dataTitle.textContent = "Copy box data";
+                    dataError.textContent = "Select and copy the JSON below.";
+                    dataText.value = text;
+                    importButton.hidden = true;
+                    dataDialog.showModal();
+                    dataText.focus(); dataText.select();
+                }
+            }
+            async function openBoxData() {
+                if (loadingBackground || drag) return;
+                dataTitle.textContent = "Paste box data";
+                dataText.value = "";
+                dataError.textContent = "";
+                importButton.hidden = false;
+                dataDialog.showModal();
+                dataText.focus();
+                try {
+                    const text = await navigator.clipboard.readText();
+                    if (dataDialog.open && !dataText.value) dataText.value = text;
+                } catch { dataError.textContent = "Paste your copied JSON into the field above."; }
+            }
             const layers = element("div", root, "layers");
             const regionSelect = element("select", layers);
             regionSelect.setAttribute("aria-label", "Selected region");
@@ -452,6 +514,8 @@ app.registerExtension({
                     return;
                 }
                 if ((event.ctrlKey || event.metaKey) && key === "z") { event.preventDefault(); history(event.shiftKey ? redo : undo, event.shiftKey ? undo : redo); }
+                else if ((event.ctrlKey || event.metaKey) && key === "c") { event.preventDefault(); copyBoxData(); }
+                else if ((event.ctrlKey || event.metaKey) && key === "v") { event.preventDefault(); openBoxData(); }
                 else if ((event.ctrlKey || event.metaKey) && key === "d") { event.preventDefault(); duplicate(); }
                 else if (key === "delete" || key === "backspace") { event.preventDefault(); remove(); }
                 else if (key === "escape") { selected = -1; mode = "select"; refresh(); }
@@ -673,8 +737,8 @@ app.registerExtension({
             const observer = new ResizeObserver(() => { if (frame === null) frame = requestAnimationFrame(paint); });
             observer.observe(root);
             const removed = node.onRemoved;
-            node.onRemoved = function () { observer.disconnect(); dialog.close(); if (frame !== null) cancelAnimationFrame(frame); loadingBackground = null; removed?.apply(this, arguments); };
-            node.setSize([520, 1100]);
+            node.onRemoved = function () { observer.disconnect(); dialog.close(); dataDialog.close(); if (frame !== null) cancelAnimationFrame(frame); loadingBackground = null; removed?.apply(this, arguments); };
+            node.setSize([520, 1140]);
             loadBackground();
         };
     },
